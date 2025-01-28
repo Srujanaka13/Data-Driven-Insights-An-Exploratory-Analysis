@@ -1,0 +1,229 @@
+{r}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+
+install.packages("ggplot2")
+install.packages("reshape2")
+install.packages("dplyr")
+install.packages("lubridate")
+
+#Libraries
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(reshape2)
+
+# Load the dataset
+data <- read.csv("inter.csv")
+
+calculate_cost_category_count <- function(data) {
+    # Your function code here
+    # Example: return the count of cost categories
+    return(data %>% count(cost_category))
+}
+
+
+# Define replacement rules with proper escaping
+replacement_rules <- list(
+  AnimalGroupParent = c(
+    "Ra\\^&it" = "Rabbit",
+    "D\\+g" = "Dog",
+    "Ca\\&" = "Cat",
+    "Ca\\$" = "Cat",
+    "cat" = "Cat",
+    "Bir\\*" = "Bird",
+    "Bi\\^&" = "Bird"
+  ),
+  PropertyCategory = c(
+    "Dwe\\^&ing" = "Dwelling",
+    "Dwe!!ing" = "Dwelling"
+  ),
+  Area = c(
+    "Rathm&\\^es" = "Rathmines",
+    "Drumco\"!ra" = "Drumcondra",
+    "Ta!!aght" = "Tallaght",
+    "Donnybr\\$\\*k" = "Donnybrook"
+  )
+)
+
+
+clean_column <- function(column, rules) {
+  if (is.character(column)) {
+    for (pattern in names(rules)) {
+      column <- str_replace_all(column, pattern, rules[[pattern]])
+    }
+  }
+  return(column)
+}
+
+# Clean the dataset
+data <- data %>%
+  mutate(across(
+    names(replacement_rules),
+    ~ clean_column(., replacement_rules[[cur_column()]])
+  ))
+
+# Data Cleaning
+# Remove rows with missing Area or Incident Notional Cost
+data_cleaned <- data %>%
+  filter(!is.na(Area), !is.na(IncidentNotionalCost))
+
+# Verify replacements
+list(
+  AnimalGroupParent = unique(data$AnimalGroupParent),
+  PropertyCategory = unique(data$PropertyCategory),
+  Area = unique(data$Area)
+)
+
+# Ensure Incident Notiona lCost is numeric
+data_cleaned$IncidentNotionalCost <- as.numeric(data_cleaned$IncidentNotionalCost)
+# Remove duplicates
+data <- data %>%
+  distinct()
+
+
+# Fix any obvious typos or anomalies in categorical columns
+data_cleaned$AnimalGroupParent <- str_to_title(data_cleaned$AnimalGroupParent)
+
+# Convert Date Time Of Call to proper datetime format
+data_cleaned$DateTimeOfCall <- dmy_hm(data_cleaned$DateTimeOfCall)
+
+# Extract date and hour from Date Time Of Call
+data_cleaned <- data_cleaned %>%
+  mutate(CallDate = date(DateTimeOfCall),
+         CallHour = hour(DateTimeOfCall))
+# Ensure Call Date is correctly formatted as a date
+data_cleaned <- data_cleaned %>%
+  mutate(CallDate = as.Date(CallDate, format = "%Y-%m-%d"))
+
+# Create Year Month column
+data_cleaned <- data_cleaned %>%
+  mutate(YearMonth = format(CallDate, "%Y-%m"))
+library(dplyr)
+
+# Sample data for illustration
+data_cleaned <- data.frame(CallHour = c(4, 9, 13, 18, 22), IncidentNotionalCost = c(200, 300, 400, 1000, 500))
+
+# Categorize hours into time of day
+data_cleaned <- data_cleaned %>% 
+    mutate(TimeOfDay = case_when(
+        CallHour >= 5 & CallHour < 12 ~ "Morning",
+        CallHour >= 12 & CallHour < 17 ~ "Afternoon",
+        CallHour >= 17 & CallHour < 21 ~ "Evening",
+        TRUE ~ "Night" 
+    ))
+
+print(data_cleaned)
+
+# Categorize costs into ranges for easier visualization
+data_cleaned <- data_cleaned %>%
+  mutate(CostCategory = case_when(
+    IncidentNotionalCost < 250 ~ "Low Cost",
+    IncidentNotionalCost >= 250 & IncidentNotionalCost < 500 ~ "Moderate Cost",
+    TRUE ~ "High Cost"
+  ))
+
+print(data_cleaned)
+# Exploratory Visualizations
+#Visualization 1:  Load ggplot2 for visualization
+library(ggplot2)
+
+ggplot(data_cleaned, aes(x = TimeOfDay, y = IncidentNotionalCost, fill = TimeOfDay)) +
+  geom_boxplot() +
+  labs(title = "Incident Cost Distribution by Time of Day", 
+       x = "Time of Day", 
+       y = "Incident Notional Cost") +
+  theme_minimal()
+
+# Visualization 2 : Density Plot of Incident Notional Cost
+ggplot(data_cleaned, aes(x = IncidentNotionalCost)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  geom_vline(aes(xintercept = mean(IncidentNotionalCost, na.rm = TRUE)), 
+             color = "blue", linetype = "dashed", size = 1, label = "Mean") +
+  geom_vline(aes(xintercept = median(IncidentNotionalCost, na.rm = TRUE)), 
+             color = "red", linetype = "dotted", size = 1, label = "Median") +
+  labs(title = "Density Plot of Incident Notional Cost",
+       x = "Incident Notional Cost",
+       y = "Density") +
+  theme_minimal()
+
+# Visualization 3: Relationship Between Call Hour and Incident Cost
+ggplot(data_cleaned, aes(x = CallHour, y = IncidentNotionalCost)) +
+  geom_point(alpha = 0.5, color = "darkorange") +
+  geom_smooth(method = "lm", color = "blue", se = FALSE) +
+  labs(title = "Relationship Between Call Hour and Incident Cost", 
+       x = "Call Hour", 
+       y = "Incident Notional Cost") +
+  theme_minimal()
+
+# Visualization 4: Count of Incidents by Cost Category and Time of Day
+ggplot(data_cleaned, aes(x = TimeOfDay, fill = CostCategory)) +
+  geom_bar(position = "stack", color = "black") +
+  labs(title = "Count of Incidents by Cost Category and Time of Day", 
+       x = "Time of Day", 
+       y = "Count") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Pastel1")
+
+
+# Visualization 5 : Boxplot of Incident Notional Cost
+ggplot(data_cleaned, aes(y = IncidentNotionalCost)) +
+  geom_boxplot(fill = "lightblue", color = "darkblue", outlier.color = "red", outlier.shape = 16) +
+  labs(title = "Boxplot of Incident Notional Cost",
+       x = NULL,
+       y = "Incident Notional Cost") +
+  theme_minimal()
+
+# Visualization 6 : Scatter Plot of Incident Notional Cost vs. Call Hour
+ggplot(data_cleaned, aes(x = CallHour, y = IncidentNotionalCost)) +
+  geom_point(alpha = 0.5, color = "orange") +
+  labs(title = "Incident Notional Cost vs. Call Hour",
+       x = "Call Hour",
+       y = "Incident Notional Cost") +
+  theme_minimal()
+
+# Visualization 7 : Bar Plot of Incident Count by Cost Category
+ggplot(data_cleaned, aes(x = CostCategory, fill = CostCategory)) +
+  geom_bar() +
+  labs(title = "Incident Count by Cost Category",
+       x = "Cost Category", 
+       y = "Count of Incidents") +
+  theme_minimal()
+
+#Visualization 9 : Violin Plot of Incident Notional Cost by Time of Day
+ggplot(data_cleaned, aes(x = TimeOfDay, y = IncidentNotionalCost, fill = TimeOfDay)) +
+  geom_violin(trim = FALSE) +
+  labs(title = "Violin Plot of Incident Notional Cost by Time of Day", 
+       x = "Time of Day", 
+       y = "Incident Notional Cost") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Visualization 10: Facet Grid of Call Hour vs. Incident Cost by Cost Category
+ggplot(data_cleaned, aes(x = CallHour, y = IncidentNotionalCost)) +
+  geom_point(aes(color = CostCategory), alpha = 0.7) +
+  facet_wrap(~ CostCategory) +
+  labs(title = "Call Hour vs. Incident Notional Cost by Cost Category",
+       x = "Call Hour",
+       y = "Incident Notional Cost") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Visualization 11: Boxplot of Incident Notional Cost by Cost Category
+ggplot(data_cleaned, aes(x = CostCategory, y = IncidentNotionalCost, fill = CostCategory)) +
+  geom_boxplot() +
+  labs(title = "Incident Notional Cost by Cost Category",
+       x = "Cost Category",
+       y = "Incident Notional Cost") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Visualization 12: Histogram of Incident Notional Cost
+ggplot(data_cleaned, aes(x = IncidentNotionalCost)) +
+  geom_histogram(binwidth = 1000, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Incident Notional Cost",
+       x = "Incident Notional Cost",
+       y = "Count") +
+  theme_minimal()
