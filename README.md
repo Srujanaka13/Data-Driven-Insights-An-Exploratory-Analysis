@@ -34,6 +34,7 @@ Missing values in the IncidentNotionalCost and Area columns were addressed.
 Irregularities in the AnimalGroupParent column (e.g., "Ra^&it") were corrected.
 
 Date and time data were standardized for consistency.
+
 #Conclusion
 
 Certain areas and property types are hotspots for animal-related incidents.
